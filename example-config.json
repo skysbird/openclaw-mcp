@@ -1,0 +1,14 @@
+# Example: Claude Code configuration
+# Add this to ~/.claude/settings.json
+
+{
+  "mcpServers": {
+    "openclaw": {
+      "command": "node",
+      "args": ["/path/to/openclaw-mcp/dist/index.js"],
+      "env": {
+        "OPENCLAW_GATEWAY_URL": "ws://127.0.0.1:18789"
+      }
+    }
+  }
+}

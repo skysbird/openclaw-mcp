@@ -1,0 +1,49 @@
+{
+  "name": "@openclaw/mcp-server",
+  "version": "1.0.0",
+  "description": "MCP Server for OpenClaw - Personal AI Assistant Integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "openclaw-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js --stdio",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "stdio": "node dist/index.js --stdio",
+    "http": "node dist/index.js --port 3000",
+    "http:public": "node dist/index.js --port 3000 --host 0.0.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "openclaw",
+    "ai",
+    "assistant",
+    "claude"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skysbird/openclaw-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/skysbird/openclaw-mcp/issues"
+  },
+  "homepage": "https://openclaw.ai"
+}
