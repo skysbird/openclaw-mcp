@@ -37,6 +37,10 @@ export const agentTools: Tool[] = [
           type: "string",
           description: "Recipient to deliver the response to (if deliver is true)",
         },
+        account_id: {
+          type: "string",
+          description: "Account ID for multi-account channels (e.g., feishu account)",
+        },
       },
       required: ["message"],
     },

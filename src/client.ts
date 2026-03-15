@@ -318,6 +318,7 @@ export class OpenClawClient {
     agent?: string;
     to?: string;
     channel?: string;
+    accountId?: string;
     thinking?: string;
     deliver?: boolean;
   }) {

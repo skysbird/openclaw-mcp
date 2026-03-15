@@ -50,6 +50,7 @@ export async function handleToolCall(
           deliver: args.deliver as boolean | undefined,
           channel: args.channel as string | undefined,
           to: args.to as string | undefined,
+          accountId: args.account_id as string | undefined,
         });
         return success(result);
       }
