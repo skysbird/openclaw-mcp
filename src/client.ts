@@ -25,6 +25,23 @@ export interface RPCResponse<T = unknown> {
   };
 }
 
+export interface BrowserTab {
+  targetId: string;
+  title: string;
+  url: string;
+  wsUrl: string;
+  type: string;
+}
+
+export interface BrowserState {
+  enabled: boolean;
+  running: boolean;
+  cdpReady: boolean;
+  cdpPort: number;
+  cdpUrl: string;
+  tabs: BrowserTab[];
+}
+
 let DEBUG = process.env.OPENCLAW_DEBUG === "true" || process.env.OPENCLAW_DEBUG === "1";
 
 export function setDebug(enabled: boolean) {
@@ -364,7 +381,8 @@ export class OpenClawClient {
   }
 
   async invokeNode(nodeId: string, command: string, params?: Record<string, unknown>) {
-    return this.call("node.invoke", { nodeId, command, params });
+    const idempotencyKey = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return this.call("node.invoke", { idempotencyKey, nodeId, command, params });
   }
 
   // Memory methods
@@ -394,13 +412,241 @@ export class OpenClawClient {
     return this.call("cron.delete", { jobId });
   }
 
-  // Browser methods
-  async browserAction(action: string, params?: Record<string, unknown>) {
-    return this.call("browser.action", { action, params });
+  // Browser methods - uses CDP (Chrome DevTools Protocol) for control
+  private browserNodeId: string | null = null;
+  private cdpPort: number | null = null;
+  private cdpWs: WebSocket | null = null;
+  private cdpRequestId = 0;
+
+  async getBrowserNodeId(): Promise<string | null> {
+    if (this.browserNodeId) return this.browserNodeId;
+
+    const result = await this.call<{ nodes?: Array<{ nodeId: string; caps?: string[] }> }>("node.list");
+    const nodes = result?.nodes || [];
+
+    // Find a node with browser capability
+    const browserNode = nodes.find(n => n.caps?.includes("browser"));
+    if (browserNode) {
+      this.browserNodeId = browserNode.nodeId;
+      return this.browserNodeId;
+    }
+    return null;
   }
 
-  async getBrowserState() {
-    return this.call("browser.state");
+  private async getBrowserInfo(): Promise<{ cdpPort: number; tabs: BrowserTab[] } | null> {
+    const nodeId = await this.getBrowserNodeId();
+    if (!nodeId) return null;
+
+    const idempotencyKey = `browser-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Get browser state
+    const stateResult = await this.call<{ payload?: { result?: { cdpPort?: number; running?: boolean } } }>("node.invoke", {
+      idempotencyKey,
+      nodeId,
+      command: "browser.proxy",
+      params: { path: "/" }
+    });
+
+    const cdpPort = stateResult?.payload?.result?.cdpPort;
+    if (!cdpPort) return null;
+    this.cdpPort = cdpPort;
+
+    // Get tabs
+    const idempotencyKey2 = `browser-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const tabsResult = await this.call<{ payload?: { result?: { tabs?: BrowserTab[] } } }>("node.invoke", {
+      idempotencyKey: idempotencyKey2,
+      nodeId,
+      command: "browser.proxy",
+      params: { path: "/tabs" }
+    });
+
+    const tabs = tabsResult?.payload?.result?.tabs || [];
+
+    return { cdpPort, tabs };
+  }
+
+  private async sendCDPCommand(targetId: string, method: string, params?: Record<string, unknown>): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      if (!this.cdpPort) {
+        reject(new Error("CDP port not available"));
+        return;
+      }
+
+      const wsUrl = `ws://127.0.0.1:${this.cdpPort}/devtools/page/${targetId}`;
+      const ws = new WebSocket(wsUrl);
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("CDP connection timeout"));
+      }, 30000);
+
+      ws.on("open", () => {
+        ws.send(JSON.stringify({
+          id: ++this.cdpRequestId,
+          method,
+          params
+        }));
+      });
+
+      ws.on("message", (data) => {
+        try {
+          const response = JSON.parse(data.toString());
+          clearTimeout(timeout);
+          ws.close();
+          if (response.error) {
+            reject(new Error(response.error.message));
+          } else {
+            resolve(response.result);
+          }
+        } catch (e) {
+          clearTimeout(timeout);
+          ws.close();
+          reject(e);
+        }
+      });
+
+      ws.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+  }
+
+  async getBrowserState(): Promise<BrowserState | { available: false; message: string }> {
+    try {
+      const info = await this.getBrowserInfo();
+      if (!info) {
+        return { available: false, message: "No browser node available" };
+      }
+      return {
+        enabled: true,
+        running: true,
+        cdpReady: true,
+        cdpPort: info.cdpPort,
+        cdpUrl: `http://127.0.0.1:${info.cdpPort}`,
+        tabs: info.tabs
+      };
+    } catch (e) {
+      return { available: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  async browserNavigate(url: string, targetId?: string): Promise<unknown> {
+    const info = await this.getBrowserInfo();
+    if (!info) {
+      throw new Error("No browser available");
+    }
+
+    // Use first page tab if no targetId specified
+    const tab = targetId
+      ? info.tabs.find(t => t.targetId === targetId)
+      : info.tabs.find(t => t.type === "page" && !t.url.startsWith("chrome://") && !t.url.startsWith("chrome-extension://"));
+
+    if (!tab) {
+      throw new Error("No suitable browser tab found");
+    }
+
+    return this.sendCDPCommand(tab.targetId, "Page.navigate", { url });
+  }
+
+  async browserScreenshot(fullPage = false, targetId?: string): Promise<{ data: string }> {
+    const info = await this.getBrowserInfo();
+    if (!info) {
+      throw new Error("No browser available");
+    }
+
+    const tab = targetId
+      ? info.tabs.find(t => t.targetId === targetId)
+      : info.tabs.find(t => t.type === "page" && !t.url.startsWith("chrome://") && !t.url.startsWith("chrome-extension://"));
+
+    if (!tab) {
+      throw new Error("No suitable browser tab found");
+    }
+
+    const result = await this.sendCDPCommand(tab.targetId, "Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: fullPage
+    }) as { data: string };
+
+    return result;
+  }
+
+  async browserClick(selector: string, targetId?: string): Promise<unknown> {
+    const info = await this.getBrowserInfo();
+    if (!info) {
+      throw new Error("No browser available");
+    }
+
+    const tab = targetId
+      ? info.tabs.find(t => t.targetId === targetId)
+      : info.tabs.find(t => t.type === "page" && !t.url.startsWith("chrome://") && !t.url.startsWith("chrome-extension://"));
+
+    if (!tab) {
+      throw new Error("No suitable browser tab found");
+    }
+
+    // Use Runtime.evaluate to click
+    return this.sendCDPCommand(tab.targetId, "Runtime.evaluate", {
+      expression: `document.querySelector('${selector}').click()`
+    });
+  }
+
+  async browserType(selector: string, text: string, targetId?: string): Promise<unknown> {
+    const info = await this.getBrowserInfo();
+    if (!info) {
+      throw new Error("No browser available");
+    }
+
+    const tab = targetId
+      ? info.tabs.find(t => t.targetId === targetId)
+      : info.tabs.find(t => t.type === "page" && !t.url.startsWith("chrome://") && !t.url.startsWith("chrome-extension://"));
+
+    if (!tab) {
+      throw new Error("No suitable browser tab found");
+    }
+
+    // Use Runtime.evaluate to type
+    const escapedText = text.replace(/'/g, "\\'");
+    return this.sendCDPCommand(tab.targetId, "Runtime.evaluate", {
+      expression: `document.querySelector('${selector}').value = '${escapedText}'`
+    });
+  }
+
+  async browserEvaluate(script: string, targetId?: string): Promise<unknown> {
+    const info = await this.getBrowserInfo();
+    if (!info) {
+      throw new Error("No browser available");
+    }
+
+    const tab = targetId
+      ? info.tabs.find(t => t.targetId === targetId)
+      : info.tabs.find(t => t.type === "page" && !t.url.startsWith("chrome://") && !t.url.startsWith("chrome-extension://"));
+
+    if (!tab) {
+      throw new Error("No suitable browser tab found");
+    }
+
+    return this.sendCDPCommand(tab.targetId, "Runtime.evaluate", {
+      expression: script,
+      returnByValue: true
+    });
+  }
+
+  // Deprecated: Use specific browser methods instead
+  async browserAction(action: string, params?: Record<string, unknown>) {
+    switch (action) {
+      case "navigate":
+        return this.browserNavigate(params?.url as string, params?.targetId as string);
+      case "screenshot":
+        return this.browserScreenshot(params?.fullPage as boolean, params?.targetId as string);
+      case "click":
+        return this.browserClick(params?.selector as string, params?.targetId as string);
+      case "type":
+        return this.browserType(params?.selector as string, params?.text as string, params?.targetId as string);
+      case "evaluate":
+        return this.browserEvaluate(params?.script as string, params?.targetId as string);
+      default:
+        throw new Error(`Unknown browser action: ${action}`);
+    }
   }
 
   // Config methods
