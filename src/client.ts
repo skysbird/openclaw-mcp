@@ -340,7 +340,17 @@ export class OpenClawClient {
     deliver?: boolean;
   }) {
     const idempotencyKey = `mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    return this.call("agent", { ...params, idempotencyKey });
+    return this.call("agent", {
+      message: params.message,
+      sessionId: params.sessionId,
+      agent: params.agent,
+      to: params.to,
+      channel: params.channel,
+      accountId: params.accountId,
+      thinking: params.thinking,
+      deliver: params.deliver,
+      idempotencyKey,
+    });
   }
 
   async runAgent(params: {
@@ -368,7 +378,13 @@ export class OpenClawClient {
     accountId?: string;
   }) {
     const idempotencyKey = `mcp-send-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    return this.call("send", { ...params, idempotencyKey });
+    return this.call("send", {
+      channel: params.channel,
+      to: params.to,
+      message: params.message,
+      accountId: params.accountId,
+      idempotencyKey,
+    });
   }
 
   // Node methods
