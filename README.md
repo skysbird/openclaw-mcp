@@ -74,11 +74,17 @@ npm install -g @openclaw/mcp-server
   "mcpServers": {
     "openclaw": {
       "command": "node",
-      "args": ["/path/to/openclaw-mcp/dist/index.js", "--stdio"]
+      "args": ["/path/to/openclaw-mcp/dist/index.js", "--stdio"],
+      "env": {
+        "OPENCLAW_GATEWAY_URL": "ws://127.0.0.1:18789",
+        "OPENCLAW_GATEWAY_TOKEN": "your-gateway-token"
+      }
     }
   }
 }
 ```
+
+> **注意**: `OPENCLAW_GATEWAY_TOKEN` 是必需的，用于认证 MCP 服务器与 OpenClaw 网关的连接。
 
 ### HTTP 远程访问配置
 
@@ -86,10 +92,12 @@ npm install -g @openclaw/mcp-server
 
 ```bash
 # 启动 HTTP 服务器，监听 3000 端口
-node dist/index.js --port 3000 --token your-secret-token
+OPENCLAW_GATEWAY_TOKEN=your-gateway-token \
+node dist/index.js --port 3000 --token your-mcp-token
 
 # 或者绑定所有网卡（允许外网访问）
-node dist/index.js --port 3000 --host 0.0.0.0 --token your-secret-token
+OPENCLAW_GATEWAY_TOKEN=your-gateway-token \
+node dist/index.js --port 3000 --host 0.0.0.0 --token your-mcp-token
 ```
 
 然后在 Claude Code 中配置远程 MCP：
@@ -100,12 +108,19 @@ node dist/index.js --port 3000 --host 0.0.0.0 --token your-secret-token
     "openclaw": {
       "url": "http://your-server:3000/mcp",
       "headers": {
-        "Authorization": "Bearer your-secret-token"
+        "Authorization": "Bearer your-mcp-token"
+      },
+      "env": {
+        "OPENCLAW_GATEWAY_TOKEN": "your-gateway-token"
       }
     }
   }
 }
 ```
+
+> **双重认证**: HTTP 模式需要两个 Token：
+> - `OPENCLAW_GATEWAY_TOKEN`: 用于连接 OpenClaw 网关
+> - `--token` / `Authorization`: 用于 MCP 客户端认证
 
 ### 环境变量
 
@@ -163,6 +178,18 @@ Options:
 |------|------|
 | `openclaw_message_send` | 直接发送消息到指定频道 |
 | `openclaw_message_read` | 读取频道消息 |
+
+> **多账号频道说明**: 当频道有多个账号配置时（如飞书），需要指定 `account_id` 参数来确保正确的路由。使用 `openclaw_channel_list` 查看各频道可用的账号列表。
+>
+> 示例：
+> ```json
+> {
+>   "channel": "feishu",
+>   "to": "oc_xxxxx",
+>   "message": "Hello",
+>   "account_id": "main"
+> }
+> ```
 
 ### Session 工具
 

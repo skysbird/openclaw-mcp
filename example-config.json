@@ -1,14 +1,50 @@
-# Example: Claude Code configuration
+# Example: Claude Code configuration (stdio mode - local)
 # Add this to ~/.claude/settings.json
 
 {
   "mcpServers": {
     "openclaw": {
       "command": "node",
-      "args": ["/path/to/openclaw-mcp/dist/index.js"],
+      "args": ["/path/to/openclaw-mcp/dist/index.js", "--stdio"],
       "env": {
-        "OPENCLAW_GATEWAY_URL": "ws://127.0.0.1:18789"
+        "OPENCLAW_GATEWAY_URL": "ws://127.0.0.1:18789",
+        "OPENCLAW_GATEWAY_TOKEN": "your-gateway-token-here"
       }
     }
   }
 }
+
+# ============================================
+# Example: HTTP mode configuration (remote)
+# ============================================
+# Start the MCP server first:
+#   OPENCLAW_GATEWAY_TOKEN=your-gateway-token node dist/index.js --port 3000
+#
+# Then add this to ~/.claude/settings.json:
+#
+# {
+#   "mcpServers": {
+#     "openclaw": {
+#       "url": "http://localhost:3000/mcp",
+#       "env": {
+#         "OPENCLAW_GATEWAY_TOKEN": "your-gateway-token-here"
+#       }
+#     }
+#   }
+# }
+#
+# ============================================
+# Important: account_id for multi-account channels
+# ============================================
+# When using channels with multiple accounts (e.g., Feishu), you may need
+# to specify account_id to ensure correct routing:
+#
+# Example with openclaw_message_send:
+#   {
+#     "channel": "feishu",
+#     "to": "oc_xxxxx",
+#     "message": "Hello",
+#     "account_id": "main"  // Use specific account instead of default
+#   }
+#
+# Use openclaw_channel_list to see available accounts for each channel.
