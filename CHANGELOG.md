@@ -1,5 +1,17 @@
 # OpenClaw MCP Server - Changelog
 
+## [1.0.1] - 2026-03-16
+
+### Fixed
+- Fixed parameter mapping in `sendMessage` and `sendChannelMessage` methods
+- Correctly pass `accountId` to Gateway API instead of `account`
+- Fixed issue where Gateway rejected requests due to unexpected properties
+
+### Added
+- Documentation for multi-account channel support (account_id parameter)
+- Comprehensive configuration examples with OPENCLAW_GATEWAY_TOKEN
+- HTTP mode dual authentication documentation
+
 ## [1.0.0] - 2026-03-10
 
 ### Added
